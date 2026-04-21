@@ -1,0 +1,1530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>LangGraph Knowledge Agent — Deep Dive</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+
+/* ── Claude Code palette ── */
+:root {
+  --bg:        #1a1a1a;   /* main background — warm near-black */
+  --bg2:       #1e1e1e;   /* elevated surface */
+  --bg3:       #242424;   /* card / panel */
+  --border:    #333333;
+  --border2:   #3d3d3d;
+  --border3:   #4a4a4a;
+
+  --text:      #ececec;   /* primary text */
+  --text2:     #cacaca;   /* secondary */
+  --text3:     #9a9a9a;   /* muted */
+  --text4:     #6e6e6e;   /* very muted */
+
+  /* Claude orange — warm coral/amber */
+  --or:        #d4956a;
+  --or-bg:     rgba(212,149,106,.08);
+  --or-border: rgba(212,149,106,.25);
+
+  /* Semantic */
+  --green:     #5a9e6f;
+  --green-bg:  rgba(90,158,111,.1);
+  --blue:      #6b9fd4;
+  --blue-bg:   rgba(107,159,212,.1);
+  --yellow:    #c9a84c;
+  --yellow-bg: rgba(201,168,76,.1);
+  --red:       #c0614a;
+  --red-bg:    rgba(192,97,74,.1);
+  --purple:    #8b7bbf;
+  --purple-bg: rgba(139,123,191,.1);
+
+  --mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  --sans: 'Inter', system-ui, sans-serif;
+}
+
+/* ── reset ── */
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth;font-size:15px}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.65;overflow-x:hidden}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--border3)}
+::selection{background:rgba(212,149,106,.25);color:var(--text)}
+
+/* ── NAV — terminal tab bar ── */
+nav {
+  position:fixed;top:0;left:0;right:0;z-index:200;
+  height:44px;
+  background:var(--bg2);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:stretch;
+  padding:0 1rem;
+  gap:0;
+}
+.nav-dots {
+  display:flex;align-items:center;gap:5px;
+  padding-right:1rem;
+  border-right:1px solid var(--border);
+  margin-right:1rem;
+}
+.nav-dot{width:10px;height:10px;border-radius:50%}
+.nav-dot.r{background:#c0614a}.nav-dot.y{background:#c9a84c}.nav-dot.g{background:#5a9e6f}
+.nav-tab {
+  display:flex;align-items:center;gap:.4rem;
+  padding:0 .85rem;
+  font-size:.8rem;font-family:var(--mono);
+  color:var(--text3);
+  text-decoration:none;
+  border-right:1px solid var(--border);
+  transition:color .15s,background .15s;
+  white-space:nowrap;
+}
+.nav-tab:hover{color:var(--text);background:var(--bg3)}
+.nav-tab.active{color:var(--text);background:var(--bg)}
+.nav-tab .tab-icon{font-size:.8rem;opacity:.6}
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:.75rem}
+.nav-badge {
+  font-size:.74rem;font-family:var(--mono);
+  background:var(--or-bg);border:1px solid var(--or-border);
+  color:var(--or);border-radius:4px;
+  padding:.2rem .55rem;
+}
+/* ── LAYOUT ── */
+.page{padding-top:44px}
+section{padding:4rem 2rem;max-width:1100px;margin:0 auto}
+section.full{max-width:100%;padding-left:3rem;padding-right:3rem}
+
+/* ── prompt-style headings ── */
+.prompt-label {
+  display:flex;align-items:center;gap:.5rem;
+  font-size:.8rem;font-family:var(--mono);
+  color:var(--text2);
+  margin-bottom:1.25rem;
+}
+.prompt-label::before{content:'>';color:var(--or);font-weight:600}
+.prompt-label .crumb{color:var(--text3)}
+.prompt-label .crumb+.crumb::before{content:' / ';color:var(--text4)}
+
+h1 {
+  font-size:clamp(2rem,5vw,3.8rem);
+  font-weight:600;
+  line-height:1.08;
+  letter-spacing:-.025em;
+  color:var(--text);
+}
+#hero h1 {
+  font-size:clamp(1.4rem,3.5vw,2.65rem);
+  color:var(--or);
+}
+h2 {
+  font-size:clamp(1.3rem,2.5vw,1.9rem);
+  font-weight:600;
+  letter-spacing:-.015em;
+  color:var(--text);
+  margin-bottom:.85rem;
+}
+h3{font-size:.95rem;font-weight:600;color:var(--text);margin-bottom:.4rem}
+p{color:var(--text2);line-height:1.75;margin-bottom:.85rem}
+p:last-child{margin-bottom:0}
+
+/* ── HERO ── */
+#hero {
+  min-height:100vh;
+  display:flex;align-items:center;
+  padding-top:44px;
+  position:relative;
+  overflow:hidden;
+}
+.hero-scanlines {
+  position:absolute;inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.03) 2px,rgba(0,0,0,.03) 4px);
+  pointer-events:none;
+}
+.hero-glow {
+  position:absolute;
+  top:-20%;left:50%;
+  transform:translateX(-50%);
+  width:800px;height:600px;
+  background:radial-gradient(ellipse,rgba(212,149,106,.07) 0%,transparent 65%);
+  pointer-events:none;
+}
+.hero-inner{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:0 2rem;width:100%}
+
+.hero-status {
+  display:inline-flex;align-items:center;gap:.5rem;
+  font-size:.76rem;font-family:var(--mono);
+  color:var(--text2);
+  background:var(--bg3);
+  border:1px solid var(--border);
+  border-radius:5px;
+  padding:.3rem .75rem;
+  margin-bottom:2rem;
+}
+.hero-status .blink{
+  width:6px;height:6px;border-radius:50%;
+  background:var(--green);
+  animation:blink 1.8s ease-in-out infinite;
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+
+.hstat{
+  background:var(--bg2);
+  padding:.9rem 1.1rem;
+  width:7.5rem;
+  flex-shrink:0;
+}
+.hstat .n{
+  font-size:1.4rem;font-weight:600;font-family:var(--mono);
+  color:var(--or);line-height:1;
+}
+.hstat .l{font-size:.74rem;color:var(--text2);margin-top:.2rem;font-family:var(--mono);white-space:normal}
+
+/* ── TERMINAL WINDOW ── */
+.term-window{
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:8px;
+  overflow:hidden;
+}
+.term-bar{
+  display:flex;align-items:center;gap:.4rem;
+  padding:.6rem .85rem;
+  background:var(--bg3);
+  border-bottom:1px solid var(--border);
+}
+.term-dot{width:9px;height:9px;border-radius:50%}
+.term-dot.r{background:#c0614a88}.term-dot.y{background:#c9a84c88}.term-dot.g{background:#5a9e6f88}
+.term-title{font-size:.75rem;font-family:var(--mono);color:var(--text3);margin-left:.4rem}
+/* ── CODE BLOCKS ── */
+pre{
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:6px;
+  padding:1.25rem 1.5rem;
+  overflow-x:auto;
+  font-size:.81rem;line-height:1.75;
+  font-family:var(--mono);
+  position:relative;
+}
+pre .file-tag{
+  position:absolute;top:.55rem;right:.65rem;
+  font-size:.71rem;color:var(--text3);
+  background:var(--bg3);
+  border:1px solid var(--border);
+  border-radius:3px;padding:.15rem .4rem;
+  font-family:var(--mono);
+}
+code{font-family:var(--mono);font-size:.85em}
+.ic{
+  background:var(--bg3);border:1px solid var(--border);
+  border-radius:3px;padding:.1rem .4rem;
+  font-size:.82em;color:var(--or);
+  font-family:var(--mono);white-space:nowrap;
+}
+
+/* syntax */
+.kw{color:#c589e8}.fn{color:#79a8d2}.str{color:#97bf78}.num{color:#d4956a}
+.cm{color:#6a6a6a;font-style:italic}.ty{color:#d4a96a}.op{color:#6baacc}
+.var{color:#d4d4d4}.dec{color:#6baacc}.pm{color:#d4956a;font-weight:600}
+
+/* ── CARDS ── */
+.cards{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+  gap:1px;background:var(--border);
+  border:1px solid var(--border);border-radius:8px;overflow:hidden;
+}
+.card{
+  background:var(--bg2);padding:1.5rem;
+  transition:background .15s;
+}
+.card:hover{background:var(--bg3)}
+.card-icon{
+  width:32px;height:32px;border-radius:6px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1rem;margin-bottom:.85rem;
+  background:var(--bg3);border:1px solid var(--border);
+}
+.card h3{font-size:.88rem}
+.card p{font-size:.82rem;color:var(--text2)}
+
+/* ── NODE CARDS ── */
+.node-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:.75rem}
+.node-card{
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-left:2px solid transparent;
+  border-radius:6px;padding:1.25rem;
+}
+.node-card.c1{border-left-color:var(--purple)}
+.node-card.c2{border-left-color:var(--blue)}
+.node-card.c3{border-left-color:var(--green)}
+.node-card.c4{border-left-color:var(--yellow)}
+.node-card.c5{border-left-color:var(--purple)}
+.node-card.c6{border-left-color:var(--or)}
+.node-card.c7{border-left-color:var(--yellow)}
+.node-card.c8{border-left-color:var(--red)}
+.node-card.c9{border-left-color:var(--red)}
+.node-card h4{font-size:.86rem;font-family:var(--mono);color:var(--text);margin-bottom:.3rem}
+.node-card .nbadge{
+  display:inline-block;font-size:.72rem;font-family:var(--mono);font-weight:600;
+  padding:.15rem .45rem;border-radius:3px;margin-bottom:.4rem;
+  text-transform:uppercase;letter-spacing:.06em;
+}
+.node-card p{font-size:.83rem;color:var(--text2);margin:0}
+.node-card ul{list-style:none;margin-top:.5rem}
+.node-card ul li{font-size:.8rem;color:var(--text2);padding:.1rem 0 .1rem .9rem;position:relative}
+.node-card ul li::before{content:'▸';position:absolute;left:0;color:var(--or);opacity:.6;font-size:.67rem}
+
+/* ── DECISION TABLE ── */
+.dtable-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+th{
+  background:var(--bg3);color:var(--text2);font-weight:500;
+  padding:.65rem 1rem;text-align:left;
+  font-size:.77rem;letter-spacing:.07em;text-transform:uppercase;
+  font-family:var(--mono);
+  border-bottom:1px solid var(--border);
+}
+td{padding:.7rem 1rem;border-bottom:1px solid var(--border);color:var(--text2);vertical-align:top}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.02)}
+td:first-child{color:var(--text);font-family:var(--mono);font-size:.82rem}
+td:nth-child(2){color:var(--or);font-family:var(--mono);font-size:.82rem}
+td:nth-child(3){color:var(--text2);font-family:var(--mono);font-size:.82rem}
+
+/* ── TECH PILLS ── */
+.tech-grid{display:flex;flex-wrap:wrap;gap:.4rem}
+.tech-pill{
+  display:flex;align-items:center;gap:.4rem;
+  background:var(--bg3);border:1px solid var(--border);
+  border-radius:4px;padding:.38rem .8rem;
+  font-size:.82rem;font-family:var(--mono);
+  color:var(--text);
+  transition:border-color .15s,color .15s;
+}
+.tech-pill:hover{border-color:var(--or-border);color:var(--text)}
+.tech-pill .ti{font-size:.88rem}
+.tech-pill .tv{font-size:.73rem;color:var(--text3)}
+
+/* ── WS EVENTS ── */
+.ev-grid{display:flex;flex-wrap:wrap;gap:.3rem}
+.ev{
+  font-size:.77rem;font-family:var(--mono);
+  padding:.22rem .55rem;border-radius:3px;font-weight:500;
+}
+.ev.start{background:var(--purple-bg);color:var(--purple)}
+.ev.result{background:var(--green-bg);color:var(--green)}
+.ev.stream{background:var(--or-bg);color:var(--or)}
+.ev.ctrl{background:var(--yellow-bg);color:var(--yellow)}
+.ev.hitl{background:var(--red-bg);color:var(--red)}
+.ev.sys{background:var(--blue-bg);color:var(--blue)}
+
+/* ── CALLOUT ── */
+.callout{
+  background:var(--bg3);
+  border:1px solid var(--border);
+  border-left:3px solid var(--or);
+  border-radius:0 6px 6px 0;
+  padding:1rem 1.25rem;
+  margin:.75rem 0;
+}
+.callout.green{border-left-color:var(--green)}
+.callout.blue{border-left-color:var(--blue)}
+.callout.red{border-left-color:var(--red)}
+.callout h4{font-size:.85rem;font-family:var(--mono);color:var(--text);margin-bottom:.35rem}
+.callout p{font-size:.83rem;color:var(--text2);margin:0}
+
+/* ── TABS ── */
+.tabs{
+  display:flex;gap:0;
+  border-bottom:1px solid var(--border);
+  margin-bottom:1.5rem;
+}
+.tab-btn{
+  padding:.55rem 1rem;font-size:.8rem;font-family:var(--mono);
+  border:none;border-bottom:2px solid transparent;
+  background:transparent;color:var(--text2);cursor:pointer;
+  transition:color .15s,border-color .15s;
+  white-space:nowrap;
+}
+.tab-btn.active{color:var(--or);border-bottom-color:var(--or)}
+.tab-btn:hover:not(.active){color:var(--text)}
+.tab-content{display:none}
+.tab-content.active{display:block}
+
+/* ── TWO COL ── */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start}
+@media(max-width:768px){
+  .two-col{grid-template-columns:1fr}
+  nav .nav-tab:not(.active){display:none}
+}
+
+/* ── CANVAS GRAPH ── */
+#langgraph{
+  width:100%;height:860px;
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:8px;
+  overflow:hidden;
+  position:relative;
+}
+canvas#graphCanvas{display:block;width:100%;height:100%}
+/* ── SCROLL REVEAL ── */
+.reveal{opacity:0;transform:translateY(16px);transition:opacity .5s ease,transform .5s ease}
+.reveal.visible{opacity:1;transform:none}
+
+/* ── SECTION SEPARATOR ── */
+.sep{border:none;border-top:1px solid var(--border);margin:0}
+
+/* ── FOOTER ── */
+footer{
+  border-top:1px solid var(--border);
+  padding:1.5rem 2rem;
+  font-size:.78rem;font-family:var(--mono);
+  color:var(--text4);
+  display:flex;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;gap:.5rem;
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<!-- ── NAV ── -->
+<nav>
+  <div class="nav-dots">
+    <div class="nav-dot r"></div>
+    <div class="nav-dot y"></div>
+    <div class="nav-dot g"></div>
+  </div>
+  <a href="#hero"      class="nav-tab active"><span class="tab-icon">◉</span> overview</a>
+  <a href="#overview"  class="nav-tab"><span class="tab-icon">◇</span> architecture</a>
+  <a href="#agentic"   class="nav-tab"><span class="tab-icon">◈</span> agentic-core</a>
+  <a href="#backend"   class="nav-tab"><span class="tab-icon">◇</span> backend</a>
+  <a href="#frontend"  class="nav-tab"><span class="tab-icon">◇</span> frontend</a>
+  <a href="#stack"     class="nav-tab"><span class="tab-icon">◇</span> stack</a>
+  <a href="#decisions" class="nav-tab"><span class="tab-icon">◇</span> decisions</a>
+  <div class="nav-right">
+    <span class="nav-badge">deep-dive</span>
+  </div>
+</nav>
+
+<!-- ── HERO ── -->
+<section id="hero">
+  <div class="hero-scanlines"></div>
+  <div class="hero-glow"></div>
+  <div class="hero-inner">
+
+    <div class="hero-status">
+      <span class="blink"></span>
+      Currently building
+    </div>
+
+    <h1>LangGraph Knowledge Agent</h1>
+
+    <p style="margin-top:1rem;font-size:.92rem">
+      Full-stack system where a React 19 SPA streams every agent step in real time as a FastAPI backend runs a 9-node LangGraph workflow — routing intent, decomposing queries, retrieving from ChromaDB and Memgraph in parallel, re-ranking with a cross-encoder, self-correcting on failures, and escalating to a Human-in-the-Loop when confidence is low. Documents enter through an async ARQ ingestion pipeline; progress surfaces via SSE.
+    </p>
+
+    <div style="display:flex;gap:1rem;margin-top:1.75rem;flex-wrap:wrap">
+      <div class="hstat"><div class="n">9</div><div class="l">LangGraph nodes</div></div>
+      <div class="hstat"><div class="n">2</div><div class="l">LLM models routed</div></div>	  	  
+      <div class="hstat"><div class="n">3</div><div class="l">retrieval strategies</div></div>
+      <div class="hstat"><div class="n">3</div><div class="l">self-correction cycles</div></div>
+      <div class="hstat"><div class="n">4</div><div class="l">failure types</div></div>
+      <div class="hstat"><div class="n">23</div><div class="l">WS event types</div></div>
+      <div class="hstat"><div class="n">3</div><div class="l">OTel signals</div></div>
+    </div>
+
+    <!-- architecture diagram -->
+    <div style="margin-top:2rem">
+      <svg viewBox="0 0 1060 366" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">
+        <defs>
+          <marker id="mh" markerWidth="8" markerHeight="7" refX="7" refY="3.5" orient="auto"><path d="M0,0 L8,3.5 L0,7 Z" fill="#5a5a5a"/></marker>
+          <marker id="mg" markerWidth="8" markerHeight="7" refX="7" refY="3.5" orient="auto"><path d="M0,0 L8,3.5 L0,7 Z" fill="#5a9e6f"/></marker>
+          <marker id="my" markerWidth="8" markerHeight="7" refX="7" refY="3.5" orient="auto"><path d="M0,0 L8,3.5 L0,7 Z" fill="#c9a84c"/></marker>
+          <marker id="md" markerWidth="8" markerHeight="7" refX="7" refY="3.5" orient="auto"><path d="M0,0 L8,3.5 L0,7 Z" fill="#4a4a4a"/></marker>
+        </defs>
+
+        <!-- column labels -->
+        <text x="113" y="17" text-anchor="middle" font-size="12" font-family="Inter,sans-serif" fill="#8a8a8a" letter-spacing=".08em">FRONTEND</text>
+        <text x="563" y="17" text-anchor="middle" font-size="12" font-family="Inter,sans-serif" fill="#8a8a8a" letter-spacing=".08em">BACKEND</text>
+        <text x="950" y="17" text-anchor="middle" font-size="12" font-family="Inter,sans-serif" fill="#8a8a8a" letter-spacing=".08em">INFRA</text>
+
+        <!-- ── FRONTEND BOX ── -->
+        <rect x="8"  y="24" width="210" height="340" rx="7" fill="#1e1e1e" stroke="#383838" stroke-width="1.5"/>
+        <line x1="8"  y1="64" x2="218"  y2="64" stroke="#383838" stroke-width="1"/>
+        <text x="113" y="50" text-anchor="middle" font-size="15" font-weight="600" font-family="'JetBrains Mono',monospace" fill="#ececec">React 19 SPA</text>
+
+        <text x="26" y="91"  font-size="15" font-family="'JetBrains Mono',monospace" fill="#8b7bbf">Redux Toolkit</text>
+        <text x="26" y="115" font-size="15" font-family="'JetBrains Mono',monospace" fill="#6b9fd4">React Router v7</text>
+        <text x="26" y="139" font-size="15" font-family="'JetBrains Mono',monospace" fill="#9a9a9a">Tailwind CSS</text>
+        <line x1="18" y1="155" x2="200" y2="155" stroke="#2e2e2e" stroke-width="1"/>
+        <text x="26" y="179" font-size="15" font-family="'JetBrains Mono',monospace" fill="#5a9e6f">WebSocket</text>
+        <text x="26" y="201" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">23 event types</text>
+        <line x1="18" y1="217" x2="200" y2="217" stroke="#2e2e2e" stroke-width="1"/>
+        <text x="26" y="241" font-size="15" font-family="'JetBrains Mono',monospace" fill="#c9a84c">SSE reader</text>
+        <text x="26" y="263" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">fetch + ReadableStream</text>
+        <line x1="18" y1="279" x2="200" y2="279" stroke="#2e2e2e" stroke-width="1"/>
+        <text x="26" y="303" font-size="15" font-family="'JetBrains Mono',monospace" fill="#9a9a9a">Vitest + MSW</text>
+        <text x="26" y="325" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">242 test cases</text>
+
+        <!-- ── PROTOCOL ARROWS (Frontend ↔ Backend) ── -->
+        <line x1="220" y1="90"  x2="316" y2="90"  stroke="#5a5a5a" stroke-width="1.5" marker-end="url(#mh)"/>
+        <line x1="316" y1="101" x2="220" y2="101" stroke="#5a5a5a" stroke-width="1.5" marker-end="url(#mh)"/>
+        <text x="268" y="82"  text-anchor="middle" font-size="12" font-family="Inter,sans-serif" fill="#8a8a8a">REST</text>
+
+        <line x1="220" y1="178" x2="316" y2="178" stroke="#5a9e6f" stroke-width="1.5" marker-end="url(#mg)"/>
+        <line x1="316" y1="189" x2="220" y2="189" stroke="#5a9e6f" stroke-width="1.5" marker-end="url(#mg)"/>
+        <text x="268" y="170" text-anchor="middle" font-size="12" font-family="Inter,sans-serif" fill="#5a9e6f">WebSocket</text>
+
+        <line x1="318" y1="241" x2="220" y2="241" stroke="#c9a84c" stroke-width="1.5" marker-end="url(#my)"/>
+        <text x="268" y="233" text-anchor="middle" font-size="12" font-family="Inter,sans-serif" fill="#c9a84c">SSE</text>
+
+        <!-- ── BACKEND BOX ── -->
+        <rect x="318" y="24" width="490" height="340" rx="7" fill="#1e1e1e" stroke="#383838" stroke-width="1.5"/>
+        <line x1="318" y1="64" x2="808" y2="64"  stroke="#383838" stroke-width="1"/>
+        <text x="563" y="50" text-anchor="middle" font-size="15" font-weight="600" font-family="'JetBrains Mono',monospace" fill="#ececec">FastAPI</text>
+
+        <!-- LangGraph inner -->
+        <rect x="332" y="74" width="462" height="108" rx="5" fill="#242424" stroke="rgba(212,149,106,.45)" stroke-width="1.5"/>
+        <text x="348" y="95"  font-size="15" font-weight="600" font-family="'JetBrains Mono',monospace" fill="#d4956a">LangGraph Workflow</text>
+        <text x="348" y="116" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">9-node stateful graph  ·  MemorySaver checkpointing</text>
+        <text x="348" y="134" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">self-correction loop  ·  HITL via interrupt()  ·  query decomposition</text>
+        <text x="348" y="152" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">hybrid RAG  ·  cross-encoder re-ranking  ·  web fallback</text>
+
+        <!-- ChromaDB -->
+        <rect x="332" y="196" width="220" height="68" rx="5" fill="#242424" stroke="rgba(107,159,212,.35)" stroke-width="1"/>
+        <text x="442" y="222" text-anchor="middle" font-size="15" font-weight="600" font-family="'JetBrains Mono',monospace" fill="#6b9fd4">ChromaDB</text>
+        <text x="442" y="244" text-anchor="middle" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">vector store · dense embeddings</text>
+
+        <!-- Memgraph -->
+        <rect x="566" y="196" width="220" height="68" rx="5" fill="#242424" stroke="rgba(139,123,191,.35)" stroke-width="1"/>
+        <text x="676" y="222" text-anchor="middle" font-size="15" font-weight="600" font-family="'JetBrains Mono',monospace" fill="#8b7bbf">Memgraph</text>
+        <text x="676" y="244" text-anchor="middle" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">graph DB · entity-enriched</text>
+
+        <!-- ARQ Worker -->
+        <rect x="332" y="278" width="220" height="62" rx="5" fill="#242424" stroke="rgba(201,168,76,.35)" stroke-width="1"/>
+        <text x="442" y="304" text-anchor="middle" font-size="15" font-weight="600" font-family="'JetBrains Mono',monospace" fill="#c9a84c">ARQ Worker</text>
+        <text x="442" y="325" text-anchor="middle" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">async ingestion pipeline</text>
+
+        <!-- Redis -->
+        <rect x="566" y="278" width="220" height="62" rx="5" fill="#242424" stroke="rgba(192,97,74,.35)" stroke-width="1"/>
+        <text x="676" y="304" text-anchor="middle" font-size="15" font-weight="600" font-family="'JetBrains Mono',monospace" fill="#c0614a">Redis</text>
+        <text x="676" y="325" text-anchor="middle" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">Pub/Sub · WS tickets (30 s TTL)</text>
+
+        <!-- ── DASHED ARROWS (Backend → Infra) ── -->
+        <line x1="810" y1="128" x2="846" y2="128" stroke="#4a4a4a" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#md)"/>
+        <line x1="810" y1="230" x2="846" y2="230" stroke="#4a4a4a" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#md)"/>
+
+        <!-- ── INFRA COLUMN ── -->
+        <!-- OpenTelemetry -->
+        <rect x="848" y="90"  width="204" height="90" rx="6" fill="#1e1e1e" stroke="#383838" stroke-width="1.2"/>
+        <text x="950" y="122" text-anchor="middle" font-size="15" font-weight="600" font-family="'JetBrains Mono',monospace" fill="#cacaca">OpenTelemetry</text>
+        <text x="950" y="143" text-anchor="middle" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">Tempo · Prometheus</text>
+        <text x="950" y="163" text-anchor="middle" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">Loki · Grafana</text>
+
+        <!-- MCP Server -->
+        <rect x="848" y="196" width="204" height="90" rx="6" fill="#1e1e1e" stroke="#383838" stroke-width="1.2"/>
+        <text x="950" y="228" text-anchor="middle" font-size="15" font-weight="600" font-family="'JetBrains Mono',monospace" fill="#cacaca">MCP Server</text>
+        <text x="950" y="249" text-anchor="middle" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">Streamable HTTP · /mcp</text>
+        <text x="950" y="269" text-anchor="middle" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">hybrid_search · search_rag</text>
+      </svg>
+    </div>
+
+  </div>
+</section>
+
+<hr class="sep"/>
+
+<!-- ── OVERVIEW ── -->
+<section id="overview" class="reveal">
+  <div class="prompt-label"><span class="crumb">docs</span><span class="crumb">overview</span> system architecture</div>
+  <h2>Architecture at a Glance</h2>
+  <p>Two independently deployable applications communicate via HTTP REST, WebSocket, and Server-Sent Events. The backend orchestrates all AI logic; the frontend provides a real-time, event-driven interface that mirrors every step of the agent workflow.</p>
+
+  <div class="cards" style="margin-top:1.5rem">
+    <div class="card">
+      <div class="card-icon">🧠</div>
+      <h3>Agentic Chat Core</h3>
+      <p>A 9-node LangGraph workflow with self-correction loops, intent routing, query decomposition, and HITL escalation. State persists across turns via MemorySaver checkpointing.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">📚</div>
+      <h3>Hybrid RAG</h3>
+      <p>Parallel retrieval over ChromaDB (dense vector chunks) and Memgraph (entity-enriched graph chunks). Combined pool re-ranked with a cross-encoder before reaching the generator.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">⚡</div>
+      <h3>Async Ingestion</h3>
+      <p>Documents enqueued via ARQ (async Redis queue). Worker tokenises, chunks, embeds, and writes to both stores concurrently. Progress streams via Redis Pub/Sub → SSE.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">🔒</div>
+      <h3>Secure Real-time</h3>
+      <p>WebSocket connections authenticate using single-use tickets (30 s TTL). The JWT never travels in the WebSocket frame, eliminating URL-log token exposure.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">🔭</div>
+      <h3>Observability</h3>
+      <p>Full OpenTelemetry stack: traces → Tempo, metrics → Prometheus, logs → Loki. Trace IDs injected into every log record. Grafana dashboards auto-provisioned.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">🛠️</div>
+      <h3>MCP Server</h3>
+      <p>Exposes the knowledge base over the Model Context Protocol at <span class="ic">/mcp</span>. Any MCP-compatible client can call <span class="ic">hybrid_search</span>, <span class="ic">search_rag</span>, <span class="ic">search_graph</span> directly.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="sep"/>
+
+<!-- ── AGENTIC CORE ── -->
+<section id="agentic" class="reveal">
+  <div class="prompt-label"><span class="crumb">app</span><span class="crumb">services</span> chat_service.py</div>
+  <h2>The LangGraph Workflow</h2>
+  <p>The heart of the system is a stateful, cyclical graph compiled with LangGraph. Each node is an async Python method. Conditional edges implement routing logic. The compiled graph persists per-session state with <span class="ic">MemorySaver</span> checkpointing.</p>
+
+  <!-- Canvas graph -->
+  <div id="langgraph" style="margin-top:1.75rem">
+    <canvas id="graphCanvas"></canvas>
+  </div>
+
+  <!-- Node breakdown -->
+  <div style="margin-top:2.5rem">
+    <div class="prompt-label"><span class="crumb">nodes</span> breakdown</div>
+    <div class="node-grid">
+
+      <div class="node-card c1">
+        <span class="nbadge" style="background:var(--purple-bg);color:var(--purple)">router</span>
+        <h4>classify_intent</h4>
+        <p>Structured LLM call (<span class="ic">IntentOutput</span>) routing to <em>conversational</em> (skip retrieval) or <em>knowledge_query</em> (full pipeline). Runs on every turn. Defaults to <code>knowledge_query</code> on failure.</p>
+      </div>
+
+      <div class="node-card c2">
+        <span class="nbadge" style="background:var(--blue-bg);color:var(--blue)">decomposer</span>
+        <h4>decompose_query</h4>
+        <p>Detects multi-part queries, extracts up to 4 self-contained sub-queries (<span class="ic">DecompositionOutput</span>). A single sub-query is treated as no decomposition. Biased toward simplicity.</p>
+      </div>
+
+      <div class="node-card c3">
+        <span class="nbadge" style="background:var(--green-bg);color:var(--green)">retrieval</span>
+        <h4>hybrid_retrieve</h4>
+        <p>Queries ChromaDB and Memgraph <strong>in parallel</strong> via <span class="ic">asyncio.gather</span> + thread-pool executor. When sub-queries present, runs one retrieval pair per sub-query (all parallel), then deduplicates. Cross-encoder re-ranks combined pool (top 5). Threshold: 0.3 cosine.</p>
+        <ul>
+          <li>ChromaDB → dense vector chunks</li>
+          <li>Memgraph → entity-enriched chunks</li>
+          <li>Graph annotations stripped before scoring</li>
+        </ul>
+      </div>
+
+      <div class="node-card c4">
+        <span class="nbadge" style="background:var(--yellow-bg);color:var(--yellow)">fallback</span>
+        <h4>web_supplement</h4>
+        <p>Triggered <strong>only</strong> when KB returns zero docs. Fetches 5 DuckDuckGo results, filters by cosine similarity (threshold 0.2). Only relevant snippets reach the generator.</p>
+      </div>
+
+      <div class="node-card c5">
+        <span class="nbadge" style="background:var(--purple-bg);color:var(--purple)">pre-check</span>
+        <h4>evaluate_context</h4>
+        <p>Pre-checks context relevance <em>before</em> the expensive generation call. If context is clearly off-topic, triggers exactly one preemptive rewrite+retrieve cycle (guarded by <span class="ic">context_precheck_rewritten</span> flag). Empty context caught without LLM call.</p>
+      </div>
+
+      <div class="node-card c6">
+        <span class="nbadge" style="background:var(--or-bg);color:var(--or)">generator</span>
+        <h4>generate</h4>
+        <p>Streaming generation via <span class="ic">ChatOpenAI</span>. Injects context + retry hints (<span class="ic">[retry:faithfulness]</span>, <span class="ic">[retry:incomplete]</span>) into the prompt. Passes conversation history for multi-turn coherence. Conversational replies bypass evaluate → END.</p>
+      </div>
+
+      <div class="node-card c7">
+        <span class="nbadge" style="background:var(--yellow-bg);color:var(--yellow)">evaluator</span>
+        <h4>evaluate</h4>
+        <p>Structured LLM evaluation (<span class="ic">EvaluationOutput</span>) checks: language match, topical relevance, faithfulness (hallucinated domain facts), completeness (multi-part queries with clear omissions). Graph annotations stripped before evaluation.</p>
+      </div>
+
+      <div class="node-card c8">
+        <span class="nbadge" style="background:var(--red-bg);color:var(--red)">retry</span>
+        <h4>rewrite_query</h4>
+        <p>Reformulates the query when retrieval failure is identified. Preserves the original language. Returns only the reformulated string. Routes back to <span class="ic">hybrid_retrieve</span>.</p>
+      </div>
+
+      <div class="node-card c9">
+        <span class="nbadge" style="background:var(--red-bg);color:var(--red)">HITL</span>
+        <h4>request_clarification</h4>
+        <p>Invoked after <span class="ic">MAX_ITERATIONS=3</span> without success. Uses LangGraph <span class="ic">interrupt()</span> to <strong>suspend</strong> the graph. Resumes via <span class="ic">Command(resume=message)</span> on the user's next message, resetting iteration=0 and re-entering from <span class="ic">classify_intent</span>.</p>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Routing logic -->
+  <div style="margin-top:2.5rem">
+    <div class="prompt-label"><span class="crumb">nodes</span> conditional routing</div>
+    <div class="two-col">
+      <div>
+        <div class="term-window">
+          <div class="term-bar">
+            <div class="term-dot r"></div><div class="term-dot y"></div><div class="term-dot g"></div>
+            <span class="term-title">routing functions</span>
+          </div>
+<pre style="border:none;border-radius:0;margin:0"><span class="cm"># after retrieve → web fallback OR context pre-check</span>
+<span class="kw">def</span> <span class="fn">_route_after_retrieve</span>(self, state):
+    total = len(state[<span class="str">"rag_docs"</span>]) + len(state[<span class="str">"graph_docs"</span>])
+    return <span class="str">"web_supplement"</span> if total == <span class="num">0</span> else <span class="str">"evaluate_context"</span>
+
+<span class="cm"># after context eval → rewrite OR generate</span>
+<span class="kw">def</span> <span class="fn">_route_after_context_eval</span>(self, state):
+    <span class="cm"># `is False` so None (not yet evaluated) falls through safely</span>
+    return (<span class="str">"rewrite_query"</span>
+            if state.get(<span class="str">"context_relevant"</span>) <span class="kw">is</span> False
+            else <span class="str">"generate"</span>)
+
+<span class="cm"># after evaluate → success / retry / escalate</span>
+<span class="kw">def</span> <span class="fn">_route_after_evaluate</span>(self, state):
+    ev   = state.get(<span class="str">"evaluation"</span>) or {}
+    iter = state.get(<span class="str">"iteration"</span>, <span class="num">0</span>)
+    if ev.get(<span class="str">"success"</span>, False):      return END
+    if iter >= MAX_ITERATIONS:          return <span class="str">"request_clarification"</span>
+    if ev.get(<span class="str">"failure_type"</span>) == <span class="str">"retrieval"</span>:
+        return <span class="str">"rewrite_query"</span>         <span class="cm"># re-retrieve</span>
+    return <span class="str">"generate"</span>                  <span class="cm"># retry generation</span>
+<div class="file-tag">chat_service.py</div></pre>
+        </div>
+      </div>
+      <div>
+        <div class="callout">
+          <h4>Why <code>is False</code> and not <code>not relevant</code>?</h4>
+          <p><span class="ic">context_relevant</span> initialises to <span class="ic">None</span>. Using <code>is False</code> means an un-evaluated state safely falls through to <span class="ic">generate</span> rather than triggering an unintended rewrite. It's a small detail with a large blast radius if wrong.</p>
+        </div>
+        <div class="callout" style="margin-top:.75rem">
+          <h4>Self-correction loop</h4>
+          <p>The evaluate → rewrite → retrieve → generate cycle runs up to <span class="ic">MAX_ITERATIONS=3</span> times. <em>Retrieval</em> failures rewrite the query; <em>generation</em> and <em>faithfulness</em> failures retry generation with targeted hints embedded in the prompt message.</p>
+        </div>
+        <div class="callout green" style="margin-top:.75rem">
+          <h4>Failure type → retry hint mapping</h4>
+          <p><span class="ic">retrieval</span> → <span class="ic">[retry:context]</span> &nbsp;·&nbsp; <span class="ic">generation</span> → <span class="ic">[retry:generation]</span> &nbsp;·&nbsp; <span class="ic">faithfulness</span> → <span class="ic">[retry:faithfulness]</span> &nbsp;·&nbsp; <span class="ic">incomplete</span> → <span class="ic">[retry:incomplete]</span></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- State schema -->
+  <div style="margin-top:2.5rem">
+    <div class="prompt-label"><span class="crumb">types</span> ChatState</div>
+    <div class="term-window">
+      <div class="term-bar">
+        <div class="term-dot r"></div><div class="term-dot y"></div><div class="term-dot g"></div>
+        <span class="term-title">chat_service.py · ChatState</span>
+      </div>
+<pre style="border:none;border-radius:0;margin:0"><span class="kw">class</span> <span class="ty">ChatState</span>(TypedDict):
+    messages:                   <span class="ty">Annotated</span>[list[<span class="ty">BaseMessage</span>], add_messages]  <span class="cm"># LangGraph reducer</span>
+    query:                      str    <span class="cm"># active query (may be overwritten after HITL resume)</span>
+    session_id:                 str
+    intent:                     str    <span class="cm"># "conversational" | "knowledge_query"</span>
+    sub_queries:                list[str]  <span class="cm"># from decompose_query — [] means no decomposition</span>
+    rag_docs:                   list[str]  <span class="cm"># page_content chunks from ChromaDB</span>
+    graph_docs:                 list[str]  <span class="cm"># entity-enriched chunks from Memgraph</span>
+    web_snippets:               list[str]  <span class="cm"># DuckDuckGo snippets (populated conditionally)</span>
+    context:                    str    <span class="cm"># assembled context string passed to the LLM</span>
+    generated_answer:           str    <span class="cm"># current candidate answer</span>
+    evaluation:                 dict | None  <span class="cm"># {success: bool, failure_type: str}</span>
+    iteration:                  int    <span class="cm"># self-correction counter — 0-based, resets on HITL</span>
+    rewritten_query:            str | None  <span class="cm"># reformulated query (reset to None after use)</span>
+    context_relevant:           bool | None <span class="cm"># None=not yet evaluated · False=rewrite · True=go</span>
+    context_precheck_rewritten: bool   <span class="cm"># caps preemptive rewrites at exactly one per cycle</span>
+<div class="file-tag">ChatState</div></pre>
+    </div>
+  </div>
+
+  <!-- Cross-encoder -->
+  <div style="margin-top:2.5rem">
+    <div class="prompt-label"><span class="crumb">retrieval</span> cross-encoder re-ranking</div>
+    <div class="two-col">
+      <div class="term-window">
+        <div class="term-bar">
+          <div class="term-dot r"></div><div class="term-dot y"></div><div class="term-dot g"></div>
+          <span class="term-title">_rerank_docs()</span>
+        </div>
+<pre style="border:none;border-radius:0;margin:0"><span class="kw">def</span> <span class="fn">_rerank_docs</span>(self, query, rag_docs, graph_docs, top_k=<span class="num">5</span>):
+    all_docs = [(<span class="str">"rag"</span>, d) for d in rag_docs] + \
+               [(<span class="str">"graph"</span>, d) for d in graph_docs]
+
+    <span class="cm"># strip graph annotations BEFORE scoring</span>
+    <span class="cm"># (keep rich content for the LLM, fair scores for ranker)</span>
+    scoring = [_strip_graph_annotations(doc) for _, doc in all_docs]
+    pairs   = [(query, text) for text in scoring]
+
+    scores  = self._cross_encoder.predict(pairs).tolist()
+    ranked  = sorted(zip(scores, all_docs),
+                     key=lambda x: x[<span class="num">0</span>], reverse=True)[:top_k]
+
+    reranked_rag   = [doc for _, (src, doc) in ranked if src == <span class="str">"rag"</span>]
+    reranked_graph = [doc for _, (src, doc) in ranked if src == <span class="str">"graph"</span>]
+    return reranked_rag, reranked_graph
+<div class="file-tag">chat_service.py</div></pre>
+      </div>
+      <div>
+        <div class="callout">
+          <h4>Two-stage retrieval pattern</h4>
+          <p>The bi-encoder (sentence-transformers) retrieves cheaply at scale via ANN. The cross-encoder (<span class="ic">ms-marco-MiniLM-L-6-v2</span>) re-reads each (query, doc) pair jointly for much higher precision — but is too slow to run over the full corpus. Industry-standard pattern for production RAG.</p>
+        </div>
+        <div class="callout" style="margin-top:.75rem">
+          <h4>Annotation stripping</h4>
+          <p>Memgraph chunks include <span class="ic">[Graph context: Entity A —rel→ B]</span> annotations. Without stripping, annotation-dense chunks get inflated scores regardless of query relevance. Annotations are preserved in the final output passed to the LLM — only removed during scoring.</p>
+        </div>
+        <div class="callout blue" style="margin-top:.75rem">
+          <h4>Thread-pool executor</h4>
+          <p>The cross-encoder's <span class="ic">predict()</span> is synchronous. It runs in <span class="ic">loop.run_in_executor(None, ...)</span> to avoid blocking the async event loop — same pattern as <span class="ic">similarity_search</span>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HITL -->
+  <div style="margin-top:2.5rem">
+    <div class="prompt-label"><span class="crumb">HITL</span> Human-in-the-Loop escalation</div>
+    <div class="two-col">
+      <div>
+        <div class="callout red">
+          <h4>interrupt() → suspend → resume</h4>
+          <p>After 3 failed attempts, <span class="ic">request_clarification</span> calls LangGraph's <span class="ic">interrupt()</span>. The graph suspends — no more nodes execute. The backend emits <span class="ic">clarification_needed</span> via WebSocket. When the user responds, <span class="ic">query_stream</span> detects the session in <span class="ic">_awaiting_clarification</span> and invokes the graph with <span class="ic">Command(resume=message)</span>, injecting the clarification as the interrupt result, resetting <span class="ic">iteration=0</span>, and continuing from <span class="ic">classify_intent</span>.</p>
+        </div>
+        <div class="callout" style="margin-top:.75rem">
+          <h4>30-minute TTL guard</h4>
+          <p><span class="ic">_awaiting_clarification</span> maps session IDs to interrupt timestamps. A 30-minute TTL prevents a stale interrupted session from being accidentally resumed by an unrelated later message.</p>
+        </div>
+      </div>
+      <div class="term-window">
+        <div class="term-bar">
+          <div class="term-dot r"></div><div class="term-dot y"></div><div class="term-dot g"></div>
+          <span class="term-title">request_clarification + resume</span>
+        </div>
+<pre style="border:none;border-radius:0;margin:0"><span class="kw">async def</span> <span class="fn">_request_clarification</span>(self, state):
+    <span class="cm"># suspends graph — returns when user responds</span>
+    clarification = interrupt(
+        <span class="str">"I tried multiple times but couldn't find"</span>
+        <span class="str">" a good answer. Could you rephrase?"</span>
+    )
+    return {
+        <span class="str">"query"</span>:       clarification,  <span class="cm"># user's new message</span>
+        <span class="str">"iteration"</span>:   <span class="num">0</span>,              <span class="cm"># reset counter</span>
+        <span class="str">"evaluation"</span>:  None,
+        <span class="str">"rag_docs"</span>:    [], <span class="str">"graph_docs"</span>: [],
+        <span class="str">"context"</span>:     <span class="str">""</span>,
+        <span class="cm"># all transient state cleared ↑</span>
+    }
+
+<span class="cm"># query_stream — resume or fresh start?</span>
+ts = self._awaiting_clarification.pop(session_id, <span class="num">0.0</span>)
+if ts and (time.time() - ts) < _CLARIFICATION_TTL:
+    graph_input = Command(resume=message)   <span class="cm"># ← resume</span>
+else:
+    graph_input = self._initial_state(message, session_id)
+<div class="file-tag">chat_service.py</div></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="sep"/>
+
+<!-- ── BACKEND ── -->
+<section id="backend" class="reveal">
+  <div class="prompt-label"><span class="crumb">app</span> backend services</div>
+  <h2>FastAPI Service Layer</h2>
+  <p>Async-first FastAPI application with dependency injection via <span class="ic">@lru_cache</span> provider functions. Clean separation between HTTP endpoints, services, and repositories.</p>
+
+  <div style="margin-top:1.5rem">
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab(event,'ing')">ingestion</button>
+      <button class="tab-btn" onclick="switchTab(event,'emb')">embedding &amp; stores</button>
+      <button class="tab-btn" onclick="switchTab(event,'auth')">auth &amp; security</button>
+      <button class="tab-btn" onclick="switchTab(event,'otel')">observability</button>
+      <button class="tab-btn" onclick="switchTab(event,'mcp')">MCP server</button>
+    </div>
+
+    <div id="tab-ing" class="tab-content active">
+      <div class="two-col">
+        <div>
+          <h3>ARQ + Redis Queue</h3>
+          <p style="font-size:.86rem">The HTTP endpoint enqueues immediately and returns a <span class="ic">task_id</span>. The ARQ worker runs in a separate process and publishes granular progress events to a Redis Pub/Sub channel.</p>
+          <div class="term-window" style="margin-top:.75rem">
+            <div class="term-bar"><div class="term-dot r"></div><div class="term-dot y"></div><div class="term-dot g"></div><span class="term-title">ingestion flow</span></div>
+<pre style="border:none;border-radius:0;margin:0;font-size:.78rem"><span class="cm"># endpoint — enqueue and return</span>
+<span class="kw">async def</span> <span class="fn">load_documents</span>(task_queue: <span class="ty">TaskQueueService</span>):
+    task_id = str(uuid.uuid4())
+    <span class="kw">await</span> task_queue.enqueue_ingestion(task_id)
+    return {<span class="str">"task_id"</span>: task_id, <span class="str">"status"</span>: <span class="str">"queued"</span>}
+
+<span class="cm"># worker — publishes progress to Redis</span>
+<span class="kw">await</span> redis.publish(
+    f<span class="str">"task:{task_id}"</span>,
+    json.dumps({<span class="str">"event_type"</span>: <span class="str">"progress"</span>,
+                <span class="str">"stage"</span>: <span class="str">"embedding"</span>})
+)
+<div class="file-tag">worker/tasks.py</div></pre>
+          </div>
+        </div>
+        <div>
+          <h3>SSE Streaming</h3>
+          <p style="font-size:.86rem"><span class="ic">SseService</span> subscribes to the Redis channel and yields events as an async generator consumed by <span class="ic">EventSourceResponse</span>. If the task already completed, the terminal status is returned immediately from a Redis key (1-hour TTL).</p>
+          <div class="callout" style="margin-top:.75rem">
+            <h4>Dual-store concurrent ingestion</h4>
+            <p><span class="ic">import_documents()</span> runs ChromaDB and Memgraph ingestion concurrently via <span class="ic">asyncio.gather</span>. Token-based chunking (200 tokens, 30 overlap). Entity extraction uses Tenacity retry. Returns <span class="ic">{documents_processed, entities_created}</span>.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-emb" class="tab-content">
+      <div class="two-col">
+        <div>
+          <h3>Shared EmbeddingService</h3>
+          <p style="font-size:.86rem">A single <span class="ic">SentenceTransformer</span> (<span class="ic">paraphrase-multilingual-MiniLM-L12-v2</span>) shared across all services via DI. <span class="ic">normalize_embeddings=True</span> ensures dot product equals cosine similarity.</p>
+          <div class="term-window" style="margin-top:.75rem">
+            <div class="term-bar"><div class="term-dot r"></div><div class="term-dot y"></div><div class="term-dot g"></div><span class="term-title">EmbeddingService</span></div>
+<pre style="border:none;border-radius:0;margin:0;font-size:.78rem"><span class="cm"># L2-normalised → dot product == cosine sim</span>
+<span class="kw">def</span> <span class="fn">embed_one</span>(self, text: str) -> list[float]:
+    return self.model.encode(
+        text, normalize_embeddings=True
+    ).tolist()
+
+<span class="cm"># web snippet relevance filter</span>
+similarity = sum(a*b for a,b in zip(q_vec, s_vec))
+if similarity >= WEB_RELEVANCE_THRESHOLD:
+    kept.append(formatted_snippet)
+<div class="file-tag">embedding_service.py</div></pre>
+          </div>
+        </div>
+        <div>
+          <h3>GraphRAG Document Store</h3>
+          <p style="font-size:.86rem">Extends <span class="ic">DocumentStoreInterface</span> with a post-retrieval Cypher traversal (<span class="ic">Document → MENTIONS → Entity → [r] → Entity</span>) that appends related entities and relationships to each chunk's <span class="ic">page_content</span>.</p>
+          <div class="callout green" style="margin-top:.75rem">
+            <h4>Relevance score formula</h4>
+            <p>ChromaDB returns L2 distances. Converted to similarity via <span class="ic">1 - L2²/2</span> and stored as <span class="ic">metadata.relevance_score</span>. Documents below 0.3 are filtered before cross-encoder re-ranking.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-auth" class="tab-content">
+      <div class="two-col">
+        <div>
+          <h3>JWT + Redis Double Validation</h3>
+          <p style="font-size:.86rem">Tokens are validated both cryptographically and against a Redis key (<span class="ic">jwt:{username}:{jti}</span>). Logout deletes the Redis key immediately — the JWT may still be mathematically valid but won't pass the store check.</p>
+          <div class="term-window" style="margin-top:.75rem">
+            <div class="term-bar"><div class="term-dot r"></div><div class="term-dot y"></div><div class="term-dot g"></div><span class="term-title">Redis key schema</span></div>
+<pre style="border:none;border-radius:0;margin:0;font-size:.78rem"><span class="cm"># Active JWT</span>
+<span class="str">jwt:{username}:{jti}</span>  →  TTL = ACCESS_TOKEN_EXPIRE
+
+<span class="cm"># WebSocket ticket — single-use, 30 s TTL</span>
+<span class="str">ws_ticket:{uuid}</span>      →  TTL = 30s
+
+<span class="cm"># WS auth flow</span>
+<span class="cm"># 1. POST /auth/ws-ticket → uuid</span>
+<span class="cm"># 2. WS   /chat/stream?ticket=uuid</span>
+<span class="cm"># 3. server: GET+DEL pipeline (atomic)</span>
+<span class="cm"># 4. reject with close 4001 if invalid</span>
+<div class="file-tag">auth_service.py</div></pre>
+          </div>
+        </div>
+        <div>
+          <div class="callout red">
+            <h4>Why single-use WS tickets?</h4>
+            <p>WebSocket upgrade URLs appear in server access logs and browser history. A long-lived JWT in the URL is a credential leak. Single-use tickets (30 s TTL) are fetched via an authenticated HTTP call and consumed atomically (GET+DEL pipeline), so even if the URL is logged, the ticket is already invalid.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-otel" class="tab-content">
+      <div class="two-col">
+        <div>
+          <h3>OpenTelemetry Stack</h3>
+          <p style="font-size:.86rem"><span class="ic">setup_telemetry(app)</span> wires up three providers during FastAPI lifespan. All are no-op when <span class="ic">OTEL_ENABLED=False</span>, adding zero overhead in development.</p>
+          <div class="cards" style="margin-top:.75rem">
+            <div class="card" style="padding:1rem"><h3 style="font-size:.83rem">Traces → Tempo</h3><p>OTLP exporter. Distributed traces across HTTP requests and LangGraph node executions.</p></div>
+            <div class="card" style="padding:1rem"><h3 style="font-size:.83rem">Metrics → Prometheus</h3><p>Scraped at <span class="ic">/metrics</span>. Latency, error rates, retrieval hit counts.</p></div>
+            <div class="card" style="padding:1rem"><h3 style="font-size:.83rem">Logs → Loki</h3><p>OTLP log exporter. <span class="ic">trace_id</span> + <span class="ic">span_id</span> in every log record for trace-log correlation.</p></div>
+          </div>
+        </div>
+        <div>
+          <div class="callout blue">
+            <h4>Vendor-neutral signal routing</h4>
+            <p>The OTel Collector aggregates all signals and fans out to Tempo, Prometheus, and Loki. Swapping Loki for Elasticsearch or Datadog requires only a collector config change — the application code is untouched.</p>
+          </div>
+          <div class="callout green" style="margin-top:.75rem">
+            <h4>Grafana auto-provisioning</h4>
+            <p>Datasources are provisioned via <span class="ic">config/grafana/provisioning/</span>. The full observability stack starts with a single <span class="ic">docker compose up</span>.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-mcp" class="tab-content">
+      <div class="two-col">
+        <div>
+          <h3>Model Context Protocol Server</h3>
+          <p style="font-size:.86rem"><span class="ic">FastMCP</span> mounted at <span class="ic">/mcp</span> with Streamable HTTP transport. Reuses the same <span class="ic">@lru_cache</span> DI singletons as the REST API — no separate initialization needed.</p>
+          <div class="term-window" style="margin-top:.75rem">
+            <div class="term-bar"><div class="term-dot r"></div><div class="term-dot y"></div><div class="term-dot g"></div><span class="term-title">mcp/server.py — exposed tools</span></div>
+<pre style="border:none;border-radius:0;margin:0;font-size:.78rem"><span class="cm"># Streamable HTTP transport — any MCP-compatible client</span>
+<span class="cm"># connects by pointing at the /mcp endpoint</span>
+
+<span class="cm"># Available tools</span>
+hybrid_search(query, top_k=<span class="num">5</span>)   <span class="cm"># ChromaDB + Memgraph</span>
+search_rag(query, top_k=<span class="num">5</span>)      <span class="cm"># ChromaDB only</span>
+search_graph(query, top_k=<span class="num">5</span>)    <span class="cm"># Memgraph only</span>
+list_documents()                <span class="cm"># metadata list</span>
+get_stats()                     <span class="cm"># store statistics</span>
+<div class="file-tag">mcp/server.py</div></pre>
+          </div>
+        </div>
+        <div>
+          <div class="callout">
+            <h4>Why MCP?</h4>
+            <p>Any MCP-compatible AI client (Claude Desktop, Cursor, etc.) can query the knowledge base directly — without going through the chat WebSocket. The same vector search and graph enrichment that powers the chat is accessible as a first-class tool for external agents.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="sep"/>
+
+<!-- ── FRONTEND ── -->
+<section id="frontend" class="reveal">
+  <div class="prompt-label"><span class="crumb">src</span> frontend architecture</div>
+  <h2>React 19 SPA</h2>
+  <p>TypeScript React SPA built with Vite 7. Logic lives in custom hooks, not components. WebSocket state is managed outside React render cycles to avoid stale-closure bugs.</p>
+
+  <div style="margin-top:1.5rem">
+    <div class="two-col">
+      <div>
+        <h3>WebSocket Event → UI State</h3>
+        <p style="font-size:.86rem">Every backend event type maps to a <span class="ic">ProcessState</span> that drives the chat UI. The mapping is isolated in <span class="ic">chatService.ts</span>, shielding components from protocol details.</p>
+        <div class="ev-grid" style="margin-top:.75rem">
+          <span class="ev start">classify_start</span>
+          <span class="ev result">classify_result</span>
+          <span class="ev start">retrieve_start</span>
+          <span class="ev result">retrieve_result</span>
+          <span class="ev start">web_search_start</span>
+          <span class="ev result">web_search_result</span>
+          <span class="ev start">context_eval_start</span>
+          <span class="ev result">context_eval_result</span>
+          <span class="ev start">rewrite_start</span>
+          <span class="ev result">rewrite_result</span>
+          <span class="ev start">generate_start</span>
+          <span class="ev stream">content</span>
+          <span class="ev ctrl">content_clear</span>
+          <span class="ev start">evaluate_start</span>
+          <span class="ev result">evaluate_result</span>
+          <span class="ev hitl">clarification_needed</span>
+          <span class="ev sys">workflow_start</span>
+          <span class="ev sys">workflow_end</span>
+          <span class="ev sys">session_id</span>
+          <span class="ev sys">end</span>
+          <span class="ev hitl">error</span>
+        </div>
+      </div>
+      <div class="term-window">
+        <div class="term-bar"><div class="term-dot r"></div><div class="term-dot y"></div><div class="term-dot g"></div><span class="term-title">types/chat.ts</span></div>
+<pre style="border:none;border-radius:0;margin:0;font-size:.78rem"><span class="kw">type</span> <span class="ty">ProcessStatus</span> =
+  | <span class="str">'idle'</span>     | <span class="str">'connecting'</span>      | <span class="str">'analyzing'</span>
+  | <span class="str">'retrieving'</span>          | <span class="str">'checking_context'</span>
+  | <span class="str">'rewriting'</span>           | <span class="str">'searching'</span>
+  | <span class="str">'generating'</span>          | <span class="str">'evaluating'</span>
+  | <span class="str">'clarifying'</span>          | <span class="str">'error'</span>
+
+interface <span class="ty">ProcessState</span> {
+  status:  <span class="ty">ProcessStatus</span>
+  label:   string     <span class="cm">// "Analyzing query..."</span>
+  detail?: string     <span class="cm">// doc count, rewritten query…</span>
+}
+
+<span class="cm">// Guaranteed visible ≥ 800 ms (prevents flicker)</span>
+const STICKY_STATUSES = [
+  <span class="str">'evaluating'</span>, <span class="str">'rewriting'</span>, <span class="str">'retrieving'</span>,
+  <span class="str">'searching'</span>, <span class="str">'checking_context'</span>
+]
+<div class="file-tag">types/chat.ts</div></pre>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:2rem">
+    <h3 style="margin-bottom:1rem">Key Patterns</h3>
+    <div class="cards">
+      <div class="card">
+        <div class="card-icon">🎫</div>
+        <h3>Single-use WS tickets</h3>
+        <p>Before each WebSocket connection, the frontend POSTs to <span class="ic">/auth/ws-ticket</span> for a 30 s single-use token. The JWT never appears in a WebSocket URL.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔄</div>
+        <h3>Callback switching</h3>
+        <p>The <span class="ic">ChatWebSocketClient</span> singleton uses <span class="ic">setCallbacks()</span> to swap handlers between messages — one persistent connection serves multiple chat turns.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">⏱</div>
+        <h3>Sticky status (800 ms)</h3>
+        <p>Significant states (evaluating, rewriting…) are guaranteed visible for ≥ 800 ms via a timestamp ref, preventing jarring flicker on fast backend paths.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">📡</div>
+        <h3>SSE via fetch</h3>
+        <p>Ingestion progress uses <span class="ic">fetch</span> + <span class="ic">ReadableStream</span> instead of native <span class="ic">EventSource</span> — the only way to send an <span class="ic">Authorization</span> header with SSE.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">⚡</div>
+        <h3>Proactive clear</h3>
+        <p>On <span class="ic">rewrite_start</span>, the frontend immediately clears partially-streamed text before the explicit <span class="ic">content_clear</span> event, returning to the full spinner state without a flash of stale content.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🎨</div>
+        <h3>Dark design tokens</h3>
+        <p>Custom Tailwind config: <span class="ic">#000000</span> bg, <span class="ic">#ececf1</span> text, <span class="ic">#da7756</span> accent. <span class="ic">animate-pending</span> pulses AI messages while streaming.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="sep"/>
+
+<!-- ── STACK ── -->
+<section id="stack" class="reveal">
+  <div class="prompt-label"><span class="crumb">deps</span> technology stack</div>
+  <h2>Tools &amp; Frameworks</h2>
+
+  <div style="margin-top:1.25rem">
+    <p style="font-size:.74rem;font-family:var(--mono);color:var(--text3);margin-bottom:.75rem"># backend</p>
+    <div class="tech-grid">
+      <div class="tech-pill"><span class="ti">⚡</span>FastAPI<span class="tv">Python 3.11+</span></div>
+      <div class="tech-pill"><span class="ti">🔗</span>LangGraph<span class="tv">stateful agents</span></div>
+      <div class="tech-pill"><span class="ti">🔗</span>LangChain<span class="tv">LLM abstraction</span></div>
+      <div class="tech-pill"><span class="ti">🎯</span>ChromaDB<span class="tv">vector store</span></div>
+      <div class="tech-pill"><span class="ti">🕸</span>Memgraph<span class="tv">graph database</span></div>
+      <div class="tech-pill"><span class="ti">📦</span>Redis<span class="tv">queue · pub-sub</span></div>
+      <div class="tech-pill"><span class="ti">⚙</span>ARQ<span class="tv">async job queue</span></div>
+      <div class="tech-pill"><span class="ti">🤗</span>sentence-transformers<span class="tv">MiniLM-L12</span></div>
+      <div class="tech-pill"><span class="ti">📊</span>cross-encoder<span class="tv">ms-marco-L-6</span></div>
+      <div class="tech-pill"><span class="ti">🌐</span>OpenRouter<span class="tv">LLM gateway</span></div>
+      <div class="tech-pill"><span class="ti">🔭</span>OpenTelemetry<span class="tv">traces·metrics·logs</span></div>
+      <div class="tech-pill"><span class="ti">📈</span>Grafana Stack<span class="tv">Tempo·Loki·Prometheus</span></div>
+      <div class="tech-pill"><span class="ti">🛡</span>FastMCP<span class="tv">MCP server</span></div>
+      <div class="tech-pill"><span class="ti">🔒</span>JWT + bcrypt<span class="tv">auth</span></div>
+      <div class="tech-pill"><span class="ti">📦</span>uv<span class="tv">package manager</span></div>
+    </div>
+  </div>
+
+  <div style="margin-top:1.5rem">
+    <p style="font-size:.74rem;font-family:var(--mono);color:var(--text3);margin-bottom:.75rem"># frontend</p>
+    <div class="tech-grid">
+      <div class="tech-pill"><span class="ti">⚛</span>React 19<span class="tv">UI framework</span></div>
+      <div class="tech-pill"><span class="ti">🔷</span>TypeScript 5.8<span class="tv">type safety</span></div>
+      <div class="tech-pill"><span class="ti">⚡</span>Vite 7<span class="tv">bundler</span></div>
+      <div class="tech-pill"><span class="ti">🔴</span>Redux Toolkit 2.8<span class="tv">state</span></div>
+      <div class="tech-pill"><span class="ti">🛣</span>React Router v7<span class="tv">routing</span></div>
+      <div class="tech-pill"><span class="ti">🎨</span>Tailwind CSS 3.4<span class="tv">styling</span></div>
+      <div class="tech-pill"><span class="ti">🧪</span>Vitest 4<span class="tv">test runner</span></div>
+      <div class="tech-pill"><span class="ti">🎭</span>MSW 2<span class="tv">API mocking</span></div>
+      <div class="tech-pill"><span class="ti">🍪</span>js-cookie<span class="tv">token storage</span></div>
+    </div>
+  </div>
+</section>
+
+<hr class="sep"/>
+
+<!-- ── DECISIONS ── -->
+<section id="decisions" class="reveal">
+  <div class="prompt-label"><span class="crumb">adr</span> architecture decision records</div>
+  <h2>Key Design Choices</h2>
+  <p>Every significant decision involves a deliberate tradeoff. The table below documents the most impactful ones.</p>
+
+  <div class="dtable-wrap" style="margin-top:1.5rem">
+    <table>
+      <thead>
+        <tr><th>decision</th><th>choice</th><th>alternative</th><th>reasoning</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Agent framework</td><td>LangGraph (stateful graph)</td><td>LangChain AgentExecutor</td>
+          <td>Fine-grained routing control, persistent checkpointed state, native HITL via interrupt()</td>
+        </tr>
+        <tr>
+          <td>Retrieval strategy</td><td>vector + graph + cross-encoder</td><td>vector only</td>
+          <td>Graph retrieval adds relationship context flat vectors can't express; cross-encoder precision &gt; bi-encoder alone</td>
+        </tr>
+        <tr>
+          <td>LLM routing</td><td>small for classify/eval/rewrite, medium for generate</td><td>single model</td>
+          <td>Reduces cost and latency for high-frequency utility calls; reserves the best model for answer quality</td>
+        </tr>
+        <tr>
+          <td>WebSocket auth</td><td>single-use tickets (30 s TTL)</td><td>JWT in WS URL</td>
+          <td>Prevents credential logging in access logs; atomic Redis pipeline prevents replay attacks</td>
+        </tr>
+        <tr>
+          <td>Ingestion async</td><td>ARQ worker + Redis Pub/Sub</td><td>sync in request handler</td>
+          <td>Embedding large documents can take minutes; async decouples upload UX from processing time</td>
+        </tr>
+        <tr>
+          <td>SSE client</td><td>fetch + ReadableStream</td><td>native EventSource</td>
+          <td>EventSource doesn't support custom headers; Authorization header required</td>
+        </tr>
+        <tr>
+          <td>Context pre-check</td><td>evaluate_context before generate</td><td>always generate then evaluate</td>
+          <td>Saves a full generation token (~2 s) when context is clearly off-topic; preemptive rewrite costs ~50 ms</td>
+        </tr>
+        <tr>
+          <td>Annotation stripping</td><td>strip before scoring AND evaluation</td><td>score raw chunks</td>
+          <td>Annotations inflate cross-encoder scores and raise the evaluator's bar unfairly</td>
+        </tr>
+        <tr>
+          <td>Observability</td><td>OTel with no-op fallback</td><td>direct Prometheus SDK</td>
+          <td>Vendor-neutral; swapping backends needs only collector config; zero overhead when disabled</td>
+        </tr>
+        <tr>
+          <td>State persistence</td><td>MemorySaver (in-process)</td><td>PostgreSQL checkpointer</td>
+          <td>Zero-config in-process checkpointing; sufficient for single-replica deployment</td>
+        </tr>
+        <tr>
+          <td>Vector store</td><td>ChromaDB (single-node)</td><td>Qdrant / Weaviate</td>
+          <td>Zero-config local deployment accelerates iteration; retrieval logic abstracted behind DocumentStoreInterface</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="margin-top:3rem">
+    <div class="prompt-label"><span class="crumb">adr</span> known trade-offs &amp; upgrade paths</div>
+    <h2>Known Trade-offs</h2>
+    <p>Conscious scope decisions with a defined upgrade path when requirements change.</p>
+    <div class="dtable-wrap" style="margin-top:1.5rem">
+      <table>
+        <thead>
+          <tr><th>component</th><th>current</th><th>limitation</th><th>upgrade path</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>State persistence</td><td>MemorySaver (in-process)</td>
+            <td>State is lost on process restart; no shared state across replicas</td>
+            <td>LangGraph's PostgreSQL checkpointer is a drop-in swap — same interface, externalized state, enables horizontal scaling</td>
+          </tr>
+          <tr>
+            <td>Vector store</td><td>ChromaDB (single-node)</td>
+            <td>No distributed mode, no built-in auth, limited horizontal scaling</td>
+            <td>Qdrant via DocumentStoreInterface — native sharding, gRPC, built-in auth; swap is isolated to the repository layer</td>
+          </tr>
+          <tr>
+            <td>Web fallback</td><td>DuckDuckGo (unofficial)</td>
+            <td>No official API, aggressive rate limiting, no SLA — not reliable under production load</td>
+            <td>Tavily Search API (native LangChain integration) or Brave Search API — both offer official endpoints with predictable rate limits</td>
+          </tr>
+          <tr>
+            <td>Embedding model</td><td>In-process SentenceTransformer</td>
+            <td>Fixed RAM footprint regardless of traffic; doesn't scale independently from the API</td>
+            <td>Dedicated inference service (FastEmbed server, Hugging Face Inference Endpoints, or Triton) — decouples embedding throughput from API scaling</td>
+          </tr>
+          <tr>
+            <td>Observability infra</td><td>Docker Compose (single host)</td>
+            <td>No high availability, no fault tolerance — entire stack tied to one machine</td>
+            <td>Kubernetes-managed deployment or managed cloud equivalents (Grafana Cloud, Google Managed Prometheus)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ── FOOTER ── -->
+<footer>
+  <span style="color:var(--or);font-weight:600">LangGraph Knowledge Agent · Deep Dive</span>
+</footer>
+
+</div><!-- .page -->
+
+<!-- ── SCRIPTS ── -->
+<script>
+/* ── Tab switching ── */
+function switchTab(e, id) {
+  const wrap = e.target.closest('section') || document;
+  wrap.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  wrap.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  e.target.classList.add('active');
+  document.getElementById('tab-' + id).classList.add('active');
+}
+
+/* ── Scroll reveal ── */
+const io = new IntersectionObserver(es => {
+  es.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.07 });
+document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+/* ── Nav active state on scroll ── */
+const navTabs = document.querySelectorAll('.nav-tab');
+const sio = new IntersectionObserver(es => {
+  es.forEach(e => {
+    if (e.isIntersecting) {
+      const id = e.target.id;
+      const match = [...navTabs].find(t => t.getAttribute('href') === '#' + id);
+      if (match) {
+        navTabs.forEach(t => t.classList.remove('active'));
+        match.classList.add('active');
+      }
+    }
+  });
+}, { rootMargin: '0px 0px -60% 0px', threshold: 0 });
+document.querySelectorAll('section[id]').forEach(s => sio.observe(s));
+
+/* ── LangGraph Canvas ── */
+(function() {
+  const canvas = document.getElementById('graphCanvas');
+  const wrap   = document.getElementById('langgraph');
+  const dpr    = window.devicePixelRatio || 1;
+  const ctx    = canvas.getContext('2d');
+
+  /* colour palette — mirrors CSS custom properties */
+  const C = {
+    bg:      '#1e1e1e',
+    grid:    '#242424',
+    or:      '#d4956a',
+    green:   '#5a9e6f',
+    blue:    '#6b9fd4',
+    purple:  '#8b7bbf',
+    yellow:  '#c9a84c',
+    red:     '#c0614a',
+  };
+
+  // ── VERTICAL LAYOUT ──────────────────────────────────────────
+  // Main spine: x=0.42  |  Right branch: x=0.78  |  Left branch: x=0.10
+  const nodes = [
+    { id:'START', label:'START',            sub:'',                    x:.42, y:.04, col:C.green,  r:18, tiny:true },
+    { id:'CI',    label:'classify_intent',  sub:'intent router',       x:.42, y:.13, col:C.purple, r:28 },
+    { id:'DQ',    label:'decompose_query',  sub:'multi-part detect',   x:.42, y:.25, col:C.blue,   r:28 },
+    { id:'HR',    label:'hybrid_retrieve',  sub:'ChromaDB+Memgraph',   x:.42, y:.39, col:C.green,  r:28 },
+    { id:'WS',    label:'web_supplement',   sub:'DuckDuckGo fallback', x:.78, y:.39, col:C.yellow, r:24 },
+    { id:'EC',    label:'evaluate_context', sub:'pre-check relevance', x:.42, y:.53, col:C.purple, r:28 },
+    { id:'RW',    label:'rewrite_query',    sub:'reformulation',       x:.10, y:.53, col:C.red,    r:24 },
+    { id:'GEN',   label:'generate',         sub:'streaming LLM',       x:.42, y:.67, col:C.or,     r:28 },
+    { id:'EVA',   label:'evaluate',         sub:'quality check',       x:.42, y:.81, col:C.yellow, r:24 },
+    { id:'HITL',  label:'clarification',    sub:'HITL interrupt()',    x:.78, y:.81, col:C.red,    r:24 },
+    { id:'END',   label:'END',              sub:'',                    x:.42, y:.94, col:C.green,  r:18, tiny:true },
+  ];
+
+  const edges = [
+    // main spine (downward)
+    { f:'START', t:'CI',   lbl:'',                     col:C.purple },
+    { f:'CI',    t:'DQ',   lbl:'knowledge_query',      col:C.blue },
+    { f:'DQ',    t:'HR',   lbl:'',                     col:C.green },
+    { f:'HR',    t:'EC',   lbl:'docs found',           col:C.purple },
+    { f:'EC',    t:'GEN',  lbl:'relevant',             col:C.or },
+    { f:'GEN',   t:'EVA',  lbl:'',                     col:C.yellow },
+    { f:'EVA',   t:'END',  lbl:'success',              col:C.green },
+
+    // conversational shortcut: classify_intent → generate (right arc)
+    { f:'CI',    t:'GEN',  lbl:'conversational',       col:C.or,    cp:[.74,.40] },
+
+    // web fallback branch (right)
+    { f:'HR',    t:'WS',   lbl:'0 docs',               col:C.yellow, cp:[.60,.34] },
+    { f:'WS',    t:'EC',   lbl:'',                     col:C.purple, cp:[.60,.46] },
+
+    // rewrite branch (left)
+    { f:'EC',    t:'RW',   lbl:'not relevant',         col:C.red,   cp:[.26,.46] },
+    { f:'EVA',   t:'RW',   lbl:'retrieval failure',    col:C.red,   cp:[.10,.74] },
+    { f:'RW',    t:'HR',   lbl:'retry',                col:C.green, cp:[.10,.32] },
+
+    // generation retry (left arc)
+    { f:'EVA',   t:'GEN',  lbl:'gen/faith/incomplete', col:C.red,   cp:[.22,.74] },
+
+    // HITL branch (right)
+    { f:'EVA',   t:'HITL', lbl:'max iter',             col:C.red,   cp:[.60,.78] },
+    { f:'HITL',  t:'CI',   lbl:'resume',               col:C.purple, cp:[.88,.47] },
+
+    // conversational END shortcut (right arc)
+    { f:'GEN',   t:'END',  lbl:'conversational',       col:C.green, cp:[.66,.80] },
+  ];
+
+  const packets = [];
+  let lastPkt = 0, lastTs = 0;
+
+  function sz() {
+    const w = wrap.clientWidth, h = wrap.clientHeight;
+    canvas.width  = w * dpr; canvas.height = h * dpr;
+    canvas.style.width = w+'px'; canvas.style.height = h+'px';
+  }
+  sz();
+  window.addEventListener('resize', () => { sz(); });
+
+  function W() { return canvas.width  / dpr; }
+  function H() { return canvas.height / dpr; }
+
+  function npos(id) {
+    const n = nodes.find(n => n.id === id);
+    if (!n) return null;
+    return { x: n.x * W(), y: n.y * H() };
+  }
+
+  function qpt(ax,ay,cpx,cpy,bx,by,t) {
+    return {
+      x:(1-t)*(1-t)*ax + 2*(1-t)*t*cpx + t*t*bx,
+      y:(1-t)*(1-t)*ay + 2*(1-t)*t*cpy + t*t*by
+    };
+  }
+
+  /* Returns the point on a node's boundary facing toward (tx,ty) */
+  function edgePoint(nodeId, tx, ty) {
+    const n = nodes.find(nd => nd.id === nodeId);
+    if (!n) return null;
+    const cx = n.x * W(), cy = n.y * H();
+    const dx = tx - cx, dy = ty - cy;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 0.001) return { x: cx, y: cy };
+    const ux = dx / dist, uy = dy / dist;
+    if (n.tiny) {
+      return { x: cx + ux * n.r, y: cy + uy * n.r };
+    }
+    const hw = 61, hh = 27; /* half of node box w=122 h=54 */
+    const t = Math.min(hw / (Math.abs(ux) || 1e-9), hh / (Math.abs(uy) || 1e-9));
+    return { x: cx + ux * t, y: cy + uy * t };
+  }
+
+  function drawEdge(e) {
+    const fc = npos(e.f), tc = npos(e.t);
+    if (!fc || !tc) return;
+    const cpx = e.cp ? e.cp[0]*W() : undefined;
+    const cpy = e.cp ? e.cp[1]*H() : undefined;
+
+    /* exit source boundary toward first waypoint; enter target boundary from last waypoint */
+    const fp = edgePoint(e.f, cpx !== undefined ? cpx : tc.x, cpx !== undefined ? cpy : tc.y);
+    const tp = edgePoint(e.t, cpx !== undefined ? cpx : fc.x, cpx !== undefined ? cpy : fc.y);
+
+    ctx.save(); ctx.scale(dpr,dpr);
+    ctx.globalAlpha = .65;
+    ctx.strokeStyle = e.col;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5,4]);
+    ctx.beginPath();
+    if (cpx !== undefined) {
+      ctx.moveTo(fp.x,fp.y);
+      ctx.quadraticCurveTo(cpx,cpy,tp.x,tp.y);
+    } else {
+      ctx.moveTo(fp.x,fp.y); ctx.lineTo(tp.x,tp.y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    /* arrowhead at target boundary */
+    const ang = cpx!==undefined ? Math.atan2(tp.y-cpy,tp.x-cpx) : Math.atan2(tp.y-fp.y,tp.x-fp.x);
+    ctx.globalAlpha = .85;
+    ctx.fillStyle = e.col;
+    ctx.save();
+    ctx.translate(tp.x,tp.y); ctx.rotate(ang);
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-9,-4); ctx.lineTo(-9,4);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+
+    /* label at bezier midpoint using centers for stable positioning */
+    if (e.lbl) {
+      const lx = cpx!==undefined ? (fc.x+cpx*2+tc.x)/4 : (fc.x+tc.x)/2;
+      const ly = cpx!==undefined ? (fc.y+cpy*2+tc.y)/4 : (fc.y+tc.y)/2;
+      ctx.globalAlpha = 1;
+      ctx.font = `600 12px 'JetBrains Mono',monospace`;
+      ctx.fillStyle = e.col;
+      ctx.textAlign = 'center';
+      ctx.fillText(e.lbl, lx, ly-7);
+    }
+    ctx.restore();
+  }
+
+  function drawNode(n) {
+    const x = n.x*W(), y = n.y*H();
+    ctx.save(); ctx.scale(dpr,dpr);
+
+    if (n.tiny) {
+      ctx.beginPath(); ctx.arc(x,y,n.r,0,Math.PI*2);
+      ctx.fillStyle = C.bg;
+      ctx.fill();
+      ctx.strokeStyle = n.col+'cc';
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = n.col;
+      ctx.font = `bold 12px 'JetBrains Mono',monospace`;
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(n.label, x, y);
+    } else {
+      const w=122, h=54, rx=6;
+      ctx.beginPath();
+      ctx.roundRect(x-w/2, y-h/2, w, h, rx);
+      ctx.fillStyle = C.bg;
+      ctx.fill();
+      ctx.strokeStyle = n.col+'bb';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = n.col;
+      ctx.font = `600 12px 'JetBrains Mono',monospace`;
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(n.label, x, y-9);
+      ctx.fillStyle = '#b0b0b0';
+      ctx.font = `500 11px 'Inter',sans-serif`;
+      ctx.fillText(n.sub, x, y+10);
+    }
+    ctx.restore();
+  }
+
+  function draw() {
+    const w=canvas.width, h=canvas.height;
+    ctx.clearRect(0,0,w,h);
+
+    /* grid */
+    ctx.save(); ctx.scale(dpr,dpr);
+    ctx.strokeStyle=C.grid; ctx.lineWidth=.5;
+    const gs=44;
+    for(let x=0;x<W();x+=gs){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H());ctx.stroke();}
+    for(let y=0;y<H();y+=gs){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W(),y);ctx.stroke();}
+    ctx.restore();
+
+    edges.forEach(drawEdge);
+
+    /* packets */
+    packets.forEach(p => {
+      const e = edges[p.ei]; if(!e) return;
+      const fp=npos(e.f), tp=npos(e.t); if(!fp||!tp) return;
+      let px,py;
+      if(e.cp){
+        const pt=qpt(fp.x,fp.y,e.cp[0]*W(),e.cp[1]*H(),tp.x,tp.y,p.t);
+        px=pt.x; py=pt.y;
+      } else { px=fp.x+(tp.x-fp.x)*p.t; py=fp.y+(tp.y-fp.y)*p.t; }
+      ctx.save(); ctx.scale(dpr,dpr);
+      const g=ctx.createRadialGradient(px,py,0,px,py,5);
+      g.addColorStop(0,e.col+'ff'); g.addColorStop(1,e.col+'00');
+      ctx.fillStyle=g;
+      ctx.beginPath(); ctx.arc(px,py,4.5,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+    });
+
+    nodes.forEach(drawNode);
+  }
+
+  function frame(ts) {
+    const dt = ts - lastTs; lastTs = ts;
+    if(ts - lastPkt > 550) {
+      lastPkt = ts;
+      packets.push({ei:Math.floor(Math.random()*edges.length), t:0});
+    }
+    for(let i=packets.length-1;i>=0;i--){
+      packets[i].t += dt/1100;
+      if(packets[i].t>=1) packets.splice(i,1);
+    }
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
