@@ -265,6 +265,7 @@ code{font-family:var(--mono);font-size:.85em}
 .node-card.c7{border-left-color:var(--yellow)}
 .node-card.c8{border-left-color:var(--red)}
 .node-card.c9{border-left-color:var(--red)}
+.node-card.c10{border-left-color:var(--blue)}
 .node-card h4{font-size:.86rem;font-family:var(--mono);color:var(--text);margin-bottom:.3rem}
 .node-card .nbadge{
   display:inline-block;font-size:.72rem;font-family:var(--mono);font-weight:600;
@@ -424,16 +425,16 @@ footer{
     <h1>LangGraph Knowledge Agent</h1>
 
     <p style="margin-top:1rem;font-size:.92rem">
-      Full-stack system where a React 19 SPA streams every agent step in real time as a FastAPI backend runs a 9-node LangGraph workflow — routing intent, decomposing queries, retrieving from ChromaDB and Memgraph in parallel, re-ranking with a cross-encoder, self-correcting on failures, and escalating to a Human-in-the-Loop when confidence is low. Documents enter through an async ARQ ingestion pipeline; progress surfaces via SSE.
+      Full-stack system where a React 19 SPA streams every agent step in real time as a FastAPI backend runs a 10-node LangGraph workflow — compressing long conversation history, routing intent, decomposing queries, retrieving from ChromaDB and Memgraph in parallel, re-ranking with a cross-encoder, self-correcting on failures, and escalating to a Human-in-the-Loop when confidence is low. Documents enter through an async ARQ ingestion pipeline; progress surfaces via SSE.
     </p>
 
     <div style="display:flex;gap:1rem;margin-top:1.75rem;flex-wrap:wrap">
-      <div class="hstat"><div class="n">9</div><div class="l">LangGraph nodes</div></div>
+      <div class="hstat"><div class="n">10</div><div class="l">LangGraph nodes</div></div>
       <div class="hstat"><div class="n">2</div><div class="l">LLM models routed</div></div>	  	  
       <div class="hstat"><div class="n">3</div><div class="l">retrieval strategies</div></div>
       <div class="hstat"><div class="n">3</div><div class="l">self-correction cycles</div></div>
       <div class="hstat"><div class="n">4</div><div class="l">failure types</div></div>
-      <div class="hstat"><div class="n">23</div><div class="l">WS event types</div></div>
+      <div class="hstat"><div class="n">21</div><div class="l">WS event types</div></div>
       <div class="hstat"><div class="n">3</div><div class="l">OTel signals</div></div>
     </div>
 
@@ -462,7 +463,7 @@ footer{
         <text x="26" y="139" font-size="15" font-family="'JetBrains Mono',monospace" fill="#9a9a9a">Tailwind CSS</text>
         <line x1="18" y1="155" x2="200" y2="155" stroke="#2e2e2e" stroke-width="1"/>
         <text x="26" y="179" font-size="15" font-family="'JetBrains Mono',monospace" fill="#5a9e6f">WebSocket</text>
-        <text x="26" y="201" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">23 event types</text>
+        <text x="26" y="201" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">21 event types</text>
         <line x1="18" y1="217" x2="200" y2="217" stroke="#2e2e2e" stroke-width="1"/>
         <text x="26" y="241" font-size="15" font-family="'JetBrains Mono',monospace" fill="#c9a84c">SSE reader</text>
         <text x="26" y="263" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">fetch + ReadableStream</text>
@@ -490,9 +491,9 @@ footer{
         <!-- LangGraph inner -->
         <rect x="332" y="74" width="462" height="108" rx="5" fill="#242424" stroke="rgba(212,149,106,.45)" stroke-width="1.5"/>
         <text x="348" y="95"  font-size="15" font-weight="600" font-family="'JetBrains Mono',monospace" fill="#d4956a">LangGraph Workflow</text>
-        <text x="348" y="116" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">9-node stateful graph  ·  MemorySaver checkpointing</text>
+        <text x="348" y="116" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">10-node stateful graph  ·  MemorySaver checkpointing</text>
         <text x="348" y="134" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">self-correction loop  ·  HITL via interrupt()  ·  query decomposition</text>
-        <text x="348" y="152" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">hybrid RAG  ·  cross-encoder re-ranking  ·  web fallback</text>
+        <text x="348" y="152" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">hybrid RAG  ·  cross-encoder re-ranking  ·  history summarization</text>
 
         <!-- ChromaDB -->
         <rect x="332" y="196" width="220" height="68" rx="5" fill="#242424" stroke="rgba(107,159,212,.35)" stroke-width="1"/>
@@ -548,7 +549,7 @@ footer{
     <div class="card">
       <div class="card-icon">🧠</div>
       <h3>Agentic Chat Core</h3>
-      <p>A 9-node LangGraph workflow with self-correction loops, intent routing, query decomposition, and HITL escalation. State persists across turns via MemorySaver checkpointing.</p>
+      <p>A 10-node LangGraph workflow with history summarization, self-correction loops, intent routing, query decomposition, and HITL escalation. State persists across turns via MemorySaver checkpointing.</p>
     </div>
     <div class="card">
       <div class="card-icon">📚</div>
@@ -595,6 +596,12 @@ footer{
   <div style="margin-top:2.5rem">
     <div class="prompt-label"><span class="crumb">nodes</span> breakdown</div>
     <div class="node-grid">
+
+      <div class="node-card c10">
+        <span class="nbadge" style="background:var(--blue-bg);color:var(--blue)">memory</span>
+        <h4>summarize_history</h4>
+        <p>Fires on every turn before <span class="ic">classify_intent</span>. No-op when estimated token count of history + summary is within <span class="ic">HISTORY_TOKEN_THRESHOLD=6000</span>. When exceeded, compresses older turns into a <span class="ic">history_summary</span> string via the small LLM, integrating any prior summary. <span class="ic">_generate</span> injects the summary as a <span class="ic">SystemMessage</span> and uses only the last <span class="ic">KEEP_RECENT_TURNS=4</span> messages.</p>
+      </div>
 
       <div class="node-card c1">
         <span class="nbadge" style="background:var(--purple-bg);color:var(--purple)">router</span>
@@ -733,6 +740,10 @@ footer{
     rewritten_query:            str | None  <span class="cm"># reformulated query (reset to None after use)</span>
     context_relevant:           bool | None <span class="cm"># None=not yet evaluated · False=rewrite · True=go</span>
     context_precheck_rewritten: bool   <span class="cm"># caps preemptive rewrites at exactly one per cycle</span>
+    history_summary:            str | None <span class="cm"># compressed summary of older turns; None until first compression</span>
+    history_summarized:         bool   <span class="cm"># True if summarization fired this turn</span>
+    turns_before:               int    <span class="cm"># message count before compression (0 if not triggered)</span>
+    turns_after:                int    <span class="cm"># message count after compression (0 if not triggered)</span>
 <div class="file-tag">ChatState</div></pre>
     </div>
   </div>
@@ -1033,6 +1044,7 @@ get_stats()                     <span class="cm"># store statistics</span>
         <div class="term-bar"><div class="term-dot r"></div><div class="term-dot y"></div><div class="term-dot g"></div><span class="term-title">types/chat.ts</span></div>
 <pre style="border:none;border-radius:0;margin:0;font-size:.78rem"><span class="kw">type</span> <span class="ty">ProcessStatus</span> =
   | <span class="str">'idle'</span>     | <span class="str">'connecting'</span>      | <span class="str">'analyzing'</span>
+  | <span class="str">'summarizing_history'</span>
   | <span class="str">'retrieving'</span>          | <span class="str">'checking_context'</span>
   | <span class="str">'rewriting'</span>           | <span class="str">'searching'</span>
   | <span class="str">'generating'</span>          | <span class="str">'evaluating'</span>
@@ -1193,6 +1205,10 @@ const STICKY_STATUSES = [
           <td>Vector store</td><td>ChromaDB (single-node)</td><td>Qdrant / Weaviate</td>
           <td>Zero-config local deployment accelerates iteration; retrieval logic abstracted behind DocumentStoreInterface</td>
         </tr>
+        <tr>
+          <td>Long-context management</td><td>LLM-based history summarization</td><td>sliding window (drop oldest turns)</td>
+          <td>Preserves semantic context across many turns without token growth; each summary integrates prior summaries so context accumulates losslessly; small model keeps cost low</td>
+        </tr>
       </tbody>
     </table>
   </div>
@@ -1300,22 +1316,24 @@ document.querySelectorAll('section[id]').forEach(s => sio.observe(s));
   // ── VERTICAL LAYOUT ──────────────────────────────────────────
   // Main spine: x=0.42  |  Right branch: x=0.78  |  Left branch: x=0.10
   const nodes = [
-    { id:'START', label:'START',            sub:'',                    x:.42, y:.04, col:C.green,  r:18, tiny:true },
-    { id:'CI',    label:'classify_intent',  sub:'intent router',       x:.42, y:.13, col:C.purple, r:28 },
-    { id:'DQ',    label:'decompose_query',  sub:'multi-part detect',   x:.42, y:.25, col:C.blue,   r:28 },
-    { id:'HR',    label:'hybrid_retrieve',  sub:'ChromaDB+Memgraph',   x:.42, y:.39, col:C.green,  r:28 },
-    { id:'WS',    label:'web_supplement',   sub:'DuckDuckGo fallback', x:.78, y:.39, col:C.yellow, r:24 },
-    { id:'EC',    label:'evaluate_context', sub:'pre-check relevance', x:.42, y:.53, col:C.purple, r:28 },
-    { id:'RW',    label:'rewrite_query',    sub:'reformulation',       x:.10, y:.53, col:C.red,    r:24 },
-    { id:'GEN',   label:'generate',         sub:'streaming LLM',       x:.42, y:.67, col:C.or,     r:28 },
-    { id:'EVA',   label:'evaluate',         sub:'quality check',       x:.42, y:.81, col:C.yellow, r:24 },
-    { id:'HITL',  label:'clarification',    sub:'HITL interrupt()',    x:.78, y:.81, col:C.red,    r:24 },
-    { id:'END',   label:'END',              sub:'',                    x:.42, y:.94, col:C.green,  r:18, tiny:true },
+    { id:'START', label:'START',              sub:'',                    x:.42, y:.03, col:C.green,  r:18, tiny:true },
+    { id:'SH',    label:'summarize_history',  sub:'history compression', x:.42, y:.11, col:C.blue,   r:28 },
+    { id:'CI',    label:'classify_intent',    sub:'intent router',       x:.42, y:.20, col:C.purple, r:28 },
+    { id:'DQ',    label:'decompose_query',    sub:'multi-part detect',   x:.42, y:.31, col:C.blue,   r:28 },
+    { id:'HR',    label:'hybrid_retrieve',    sub:'ChromaDB+Memgraph',   x:.42, y:.43, col:C.green,  r:28 },
+    { id:'WS',    label:'web_supplement',     sub:'DuckDuckGo fallback', x:.78, y:.43, col:C.yellow, r:24 },
+    { id:'EC',    label:'evaluate_context',   sub:'pre-check relevance', x:.42, y:.55, col:C.purple, r:28 },
+    { id:'RW',    label:'rewrite_query',      sub:'reformulation',       x:.10, y:.55, col:C.red,    r:24 },
+    { id:'GEN',   label:'generate',           sub:'streaming LLM',       x:.42, y:.67, col:C.or,     r:28 },
+    { id:'EVA',   label:'evaluate',           sub:'quality check',       x:.42, y:.81, col:C.yellow, r:24 },
+    { id:'HITL',  label:'clarification',      sub:'HITL interrupt()',    x:.78, y:.81, col:C.red,    r:24 },
+    { id:'END',   label:'END',                sub:'',                    x:.42, y:.94, col:C.green,  r:18, tiny:true },
   ];
 
   const edges = [
     // main spine (downward)
-    { f:'START', t:'CI',   lbl:'',                     col:C.purple },
+    { f:'START', t:'SH',   lbl:'',                     col:C.blue },
+    { f:'SH',    t:'CI',   lbl:'',                     col:C.purple },
     { f:'CI',    t:'DQ',   lbl:'knowledge_query',      col:C.blue },
     { f:'DQ',    t:'HR',   lbl:'',                     col:C.green },
     { f:'HR',    t:'EC',   lbl:'docs found',           col:C.purple },
@@ -1324,7 +1342,7 @@ document.querySelectorAll('section[id]').forEach(s => sio.observe(s));
     { f:'EVA',   t:'END',  lbl:'success',              col:C.green },
 
     // conversational shortcut: classify_intent → generate (right arc)
-    { f:'CI',    t:'GEN',  lbl:'conversational',       col:C.or,    cp:[.74,.40] },
+    { f:'CI',    t:'GEN',  lbl:'conversational',       col:C.or,    cp:[.74,.43] },
 
     // web fallback branch (right)
     { f:'HR',    t:'WS',   lbl:'0 docs',               col:C.yellow, cp:[.60,.34] },
@@ -1340,7 +1358,7 @@ document.querySelectorAll('section[id]').forEach(s => sio.observe(s));
 
     // HITL branch (right)
     { f:'EVA',   t:'HITL', lbl:'max iter',             col:C.red,   cp:[.60,.78] },
-    { f:'HITL',  t:'CI',   lbl:'resume',               col:C.purple, cp:[.88,.47] },
+    { f:'HITL',  t:'CI',   lbl:'resume',               col:C.purple, cp:[.88,.50] },
 
     // conversational END shortcut (right arc)
     { f:'GEN',   t:'END',  lbl:'conversational',       col:C.green, cp:[.66,.80] },
