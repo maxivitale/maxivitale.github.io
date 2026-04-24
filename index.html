@@ -493,7 +493,7 @@ footer{
         <text x="348" y="95"  font-size="15" font-weight="600" font-family="'JetBrains Mono',monospace" fill="#d4956a">LangGraph Workflow</text>
         <text x="348" y="116" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">10-node stateful graph  ·  MemorySaver checkpointing</text>
         <text x="348" y="134" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">self-correction loop  ·  HITL via interrupt()  ·  query decomposition</text>
-        <text x="348" y="152" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">hybrid RAG  ·  cross-encoder re-ranking  ·  history summarization</text>
+        <text x="348" y="152" font-size="13"   font-family="Inter,sans-serif" fill="#9a9a9a">hybrid RAG  ·  re-ranking  ·  history summary  ·  injection guard</text>
 
         <!-- ChromaDB -->
         <rect x="332" y="196" width="220" height="68" rx="5" fill="#242424" stroke="rgba(107,159,212,.35)" stroke-width="1"/>
@@ -564,7 +564,7 @@ footer{
     <div class="card">
       <div class="card-icon">🔒</div>
       <h3>Secure Real-time</h3>
-      <p>WebSocket connections authenticate using single-use tickets (30 s TTL). The JWT never travels in the WebSocket frame, eliminating URL-log token exposure.</p>
+      <p>WebSocket connections authenticate using single-use tickets (30 s TTL). The JWT never travels in the WebSocket frame. Every message is screened by a regex-based injection guard before the graph runs — direct and indirect prompt injection blocked in microseconds, no LLM call needed.</p>
     </div>
     <div class="card">
       <div class="card-icon">🔭</div>
@@ -595,6 +595,12 @@ footer{
   <!-- Node breakdown -->
   <div style="margin-top:2.5rem">
     <div class="prompt-label"><span class="crumb">nodes</span> breakdown</div>
+
+    <div class="callout red" style="margin-bottom:1.25rem">
+      <h4>Pre-graph: prompt injection guard</h4>
+      <p>Before any LangGraph node executes, <span class="ic">query_stream</span> runs the raw user message through <span class="ic">_check_injection()</span> — a compiled regex (<span class="ic">_INJECTION_PATTERNS</span>) covering the most common injection vectors: override / forget / ignore instructions, jailbreak keywords, <span class="ic">&lt;system&gt;</span> XML tags, <code>system</code> code fences, and role-switching phrases. A match emits a single <span class="ic">error</span> event and returns — the graph is never invoked. For <strong>indirect injection</strong> via retrieved content, all KB and web chunks are wrapped in <span class="ic">&lt;retrieved_context&gt;</span> XML tags and the system prompt explicitly instructs the model to treat that block as data only. Zero latency cost for clean messages.</p>
+    </div>
+
     <div class="node-grid">
 
       <div class="node-card c10">
